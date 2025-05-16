@@ -48,8 +48,7 @@
 </p>
 
 ## TTC_MEM0 改造
-改造的代码在 ttc_main 分支，具体改造点:
-
+具体改造点:
 - 支持自定义 **embedder provider**、**llm provider**, 修改了 `src/mem0-ts/src/oss/src/utils/factory.ts`代码
 
 ##  🔥 Research Highlights
