@@ -1,5 +1,5 @@
 {
-  "name": "mem0ai",
+  "name": "ttc_mem0ai",
   "version": "2.1.25",
   "description": "The Memory Layer For Your AI Apps",
   "main": "./dist/index.js",
@@ -74,7 +74,7 @@
     "long-term-memory",
     "ai"
   ],
-  "author": "Deshraj Yadav",
+  "author": "ttc",
   "license": "Apache-2.0",
   "devDependencies": {
     "@types/node": "^22.7.6",
