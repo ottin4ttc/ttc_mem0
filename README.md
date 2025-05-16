@@ -49,7 +49,8 @@
 
 ## TTC_MEM0 改造
 对 mem0-ts 进行改造，具体改造点:
-- OpenAIEmbedder 支持参数 uri
+- OpenAIEmbedder 配置支持参数 url
+- OpenAILLM 配置支持参数 url
 
 ##  🔥 Research Highlights
 - **+26% Accuracy** over OpenAI Memory on the LOCOMO benchmark
