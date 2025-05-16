@@ -48,8 +48,8 @@
 </p>
 
 ## TTC_MEM0 改造
-具体改造点:
-- 支持自定义 **embedder provider**、**llm provider**, 修改了 `src/mem0-ts/src/oss/src/utils/factory.ts`代码
+对 mem0-ts 进行改造，具体改造点:
+- OpenAIEmbedder 支持参数 uri
 
 ##  🔥 Research Highlights
 - **+26% Accuracy** over OpenAI Memory on the LOCOMO benchmark
