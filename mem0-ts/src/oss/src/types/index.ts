@@ -137,6 +137,7 @@ export const MemoryConfigSchema = z.object({
       modelProperties: z.record(z.string(), z.any()).optional(),
       apiKey: z.string().optional(),
       model: z.union([z.string(), z.any()]).optional(),
+      url: z.string().optional(),
     }),
   }),
   vectorStore: z.object({
@@ -155,6 +156,7 @@ export const MemoryConfigSchema = z.object({
       apiKey: z.string().optional(),
       model: z.union([z.string(), z.any()]).optional(),
       modelProperties: z.record(z.string(), z.any()).optional(),
+      url: z.string().optional(),
     }),
   }),
   historyDbPath: z.string().optional(),
