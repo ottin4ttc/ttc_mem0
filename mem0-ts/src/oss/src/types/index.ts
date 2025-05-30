@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { Tag } from '../memory/memory.types';
+import { Tag } from "../memory/memory.types";
 
 export interface MultiModalMessages {
   type: "image_url";
@@ -20,7 +20,7 @@ export interface MemoryAction {
 }
 
 export interface AddToVectorStoreOptions {
-  messages: Message[],
+  messages: Message[];
   tags: Tag[];
   filters: SearchFilters;
   customPrompt?: string;

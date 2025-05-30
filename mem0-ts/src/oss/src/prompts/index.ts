@@ -18,24 +18,24 @@ export const MemoryUpdateSchema = z.object({
         event: z
           .enum(["ADD", "UPDATE", "DELETE", "NONE"])
           .describe(
-            "The action taken for this memory item (ADD, UPDATE, DELETE, or NONE)."
+            "The action taken for this memory item (ADD, UPDATE, DELETE, or NONE).",
           ),
         old_memory: z
           .string()
           .optional()
           .describe(
-            "The previous content of the memory item if the event was UPDATE."
+            "The previous content of the memory item if the event was UPDATE.",
           ),
-      })
+      }),
     )
     .describe(
-      "An array representing the state of memory items after processing new facts."
+      "An array representing the state of memory items after processing new facts.",
     ),
 });
 
 export function getTextTagRetrievalMessages(
   parsedMessages: string,
-  tags: Tag[]
+  tags: Tag[],
 ): [string, string] {
   const systemPrompt = `You are a Personal Information Organizer, specialized in accurately storing facts, tags, user memories, and preferences. 你的主要职责是从对话中抽取出与下列标签相关的信息，并将这些信息组织成独立的、可管理的 facts. This allows for easy retrieval and personalization in future interactions. Below are the types of information you need to focus on and the detailed instructions on how to handle the input data.
   
@@ -110,7 +110,7 @@ export function getTextTagRetrievalMessages(
 }
 
 export function getFactRetrievalMessages(
-  parsedMessages: string
+  parsedMessages: string,
 ): [string, string] {
   const systemPrompt = `You are a Personal Information Organizer, specialized in accurately storing facts, user memories, and preferences. Your primary role is to extract relevant pieces of information from conversations and organize them into distinct, manageable facts. This allows for easy retrieval and personalization in future interactions. Below are the types of information you need to focus on and the detailed instructions on how to handle the input data.
   
@@ -172,7 +172,7 @@ export function getFactRetrievalMessages(
 export function getTextTagUpdateMemoryMessages(
   retrievedOldMemory: Array<{ id: string; text: string; tag_names: string[] }>,
   tags: Tag[],
-  newRetrievedFacts: Array<{ text: string; tag_names: string[] }>
+  newRetrievedFacts: Array<{ text: string; tag_names: string[] }>,
 ): string {
   return `You are a smart memory manager which controls the memory of a system.
       You can perform four operations: (1) add into the memory, (2) update the memory, (3) delete from the memory, and (4) no change.
@@ -366,7 +366,7 @@ export function getTextTagUpdateMemoryMessages(
 
 export function getUpdateMemoryMessages(
   retrievedOldMemory: Array<{ id: string; text: string }>,
-  newRetrievedFacts: string[]
+  newRetrievedFacts: string[],
 ): string {
   return `You are a smart memory manager which controls the memory of a system.
   You can perform four operations: (1) add into the memory, (2) update the memory, (3) delete from the memory, and (4) no change.
