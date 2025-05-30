@@ -1,4 +1,3 @@
-import { Message } from "../types";
 import { SearchFilters } from "../types";
 
 export interface Entity {
@@ -7,10 +6,17 @@ export interface Entity {
   runId?: string;
 }
 
+export interface Tag {
+  name: string;
+  description: string;
+}
+
 export interface AddMemoryOptions extends Entity {
   metadata?: Record<string, any>;
   filters?: SearchFilters;
   infer?: boolean;
+  tags?: Tag[];
+  customPrompt?: string;
 }
 
 export interface SearchMemoryOptions extends Entity {

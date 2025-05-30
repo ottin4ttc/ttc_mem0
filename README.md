@@ -51,6 +51,8 @@
 对 mem0-ts 进行改造，具体改造点:
 - OpenAIEmbedder 配置支持参数 url
 - OpenAILLM 配置支持参数 url
+- mem0-ts 支持 tag
+- mem0-ts 支持将“memory 写入”分为独立的两个步骤：createActions、applyActions
 
 ##  🔥 Research Highlights
 - **+26% Accuracy** over OpenAI Memory on the LOCOMO benchmark

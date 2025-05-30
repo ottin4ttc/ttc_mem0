@@ -1,10 +1,30 @@
 import { z } from "zod";
+import { Tag } from '../memory/memory.types';
 
 export interface MultiModalMessages {
   type: "image_url";
   image_url: {
     url: string;
   };
+}
+
+export interface MemoryAction {
+  memoryId: string; // memory_id
+  actionId: string; // action_id
+  event: "ADD" | "UPDATE" | "DELETE"; // add, update, delete
+  text: string; // memory text
+  tagNames?: string[];
+  oldText?: string; // old memory text
+  oldTagNames?: string[];
+  metadata?: Record<string, any>;
+}
+
+export interface AddToVectorStoreOptions {
+  messages: Message[],
+  tags: Tag[];
+  filters: SearchFilters;
+  customPrompt?: string;
+  metadata: Record<string, any>;
 }
 
 export interface Message {

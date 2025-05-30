@@ -1,6 +1,8 @@
 import { v4 as uuidv4 } from "uuid";
 import { createHash } from "crypto";
 import {
+  AddToVectorStoreOptions,
+  MemoryAction,
   MemoryConfig,
   MemoryConfigSchema,
   MemoryItem,
@@ -16,8 +18,9 @@ import {
 } from "../utils/factory";
 import {
   getFactRetrievalMessages,
+  getTextTagRetrievalMessages,
+  getTextTagUpdateMemoryMessages,
   getUpdateMemoryMessages,
-  parseMessages,
   removeCodeBlocks,
 } from "../prompts";
 import { DummyHistoryManager } from "../storage/DummyHistoryManager";
@@ -31,10 +34,12 @@ import {
   SearchMemoryOptions,
   DeleteAllMemoryOptions,
   GetAllMemoryOptions,
+  Tag,
 } from "./memory.types";
 import { parse_vision_messages } from "../utils/memory";
 import { HistoryManager } from "../storage/base";
 import { captureClientEvent } from "../utils/telemetry";
+import { TagsUtils } from "../utils/tags";
 
 export class Memory {
   private config: MemoryConfig;
@@ -56,15 +61,15 @@ export class Memory {
     this.customPrompt = this.config.customPrompt;
     this.embedder = EmbedderFactory.create(
       this.config.embedder.provider,
-      this.config.embedder.config,
+      this.config.embedder.config
     );
     this.vectorStore = VectorStoreFactory.create(
       this.config.vectorStore.provider,
-      this.config.vectorStore.config,
+      this.config.vectorStore.config
     );
     this.llm = LLMFactory.create(
       this.config.llm.provider,
-      this.config.llm.config,
+      this.config.llm.config
     );
     if (this.config.disableHistory) {
       this.db = new DummyHistoryManager();
@@ -80,7 +85,7 @@ export class Memory {
         this.config.historyStore && !this.config.disableHistory
           ? HistoryManagerFactory.create(
               this.config.historyStore.provider,
-              this.config.historyStore,
+              this.config.historyStore
             )
           : HistoryManagerFactory.create("sqlite", defaultConfig);
     }
@@ -154,7 +159,7 @@ export class Memory {
 
   async add(
     messages: string | Message[],
-    config: AddMemoryOptions,
+    config: AddMemoryOptions
   ): Promise<SearchResult> {
     await this._captureEvent("add", {
       message_count: Array.isArray(messages) ? messages.length : 1,
@@ -169,6 +174,8 @@ export class Memory {
       metadata = {},
       filters = {},
       infer = true,
+      tags = [],
+      customPrompt = "",
     } = config;
 
     if (userId) filters.userId = metadata.userId = userId;
@@ -177,7 +184,7 @@ export class Memory {
 
     if (!filters.userId && !filters.agentId && !filters.runId) {
       throw new Error(
-        "One of the filters: userId, agentId or runId is required!",
+        "One of the filters: userId, agentId or runId is required!"
       );
     }
 
@@ -188,12 +195,22 @@ export class Memory {
     const final_parsedMessages = await parse_vision_messages(parsedMessages);
 
     // Add to vector store
-    const vectorStoreResult = await this.addToVectorStore(
-      final_parsedMessages,
-      metadata,
-      filters,
-      infer,
-    );
+    let vectorStoreResult: MemoryItem[] = [];
+    if (!infer) {
+      vectorStoreResult = await this.addToVectorStoreDirect({
+        messages: final_parsedMessages,
+        tags,
+        metadata,
+      });
+    } else {
+      vectorStoreResult = await this.addToVectorStore(
+        final_parsedMessages,
+        tags,
+        customPrompt,
+        metadata,
+        filters
+      );
+    }
 
     // Add to graph store if available
     let graphResult;
@@ -201,7 +218,7 @@ export class Memory {
       try {
         graphResult = await this.graphMemory.add(
           final_parsedMessages.map((m) => m.content).join("\n"),
-          filters,
+          filters
         );
       } catch (error) {
         console.error("Error adding to graph memory:", error);
@@ -214,83 +231,203 @@ export class Memory {
     };
   }
 
-  private async addToVectorStore(
-    messages: Message[],
-    metadata: Record<string, any>,
-    filters: SearchFilters,
-    infer: boolean,
-  ): Promise<MemoryItem[]> {
-    if (!infer) {
-      const returnedMemories: MemoryItem[] = [];
-      for (const message of messages) {
-        if (message.content === "system") {
-          continue;
-        }
-        const memoryId = await this.createMemory(
-          message.content as string,
-          {},
-          metadata,
-        );
-        returnedMemories.push({
-          id: memoryId,
-          memory: message.content as string,
-          metadata: { event: "ADD" },
-        });
-      }
-      return returnedMemories;
+  async createActions(
+    messages: string | Message[],
+    config: AddMemoryOptions
+  ): Promise<MemoryAction[]> {
+    await this._captureEvent("add", {
+      message_count: Array.isArray(messages) ? messages.length : 1,
+      has_metadata: !!config.metadata,
+      has_filters: !!config.filters,
+      infer: config.infer,
+    });
+    const {
+      userId,
+      agentId,
+      runId,
+      tags = [],
+      metadata = {},
+      filters = {},
+    } = config;
+
+    if (userId) filters.userId = metadata.userId = userId;
+    if (agentId) filters.agentId = metadata.agentId = agentId;
+    if (runId) filters.runId = metadata.runId = runId;
+
+    if (!filters.userId && !filters.agentId && !filters.runId) {
+      throw new Error(
+        "One of the filters: userId, agentId or runId is required!"
+      );
     }
+
+    const parsedMessages = Array.isArray(messages)
+      ? (messages as Message[])
+      : [{ role: "user", content: messages }];
+
+    const final_parsedMessages = await parse_vision_messages(parsedMessages);
+
+    // Add to vector store
+    const actions = await this.createAddToVectorStoreActions({
+      messages: final_parsedMessages,
+      tags,
+      filters,
+      customPrompt: config.customPrompt,
+    });
+
+    return actions;
+  }
+
+  async applyActions(actions: MemoryAction[]): Promise<MemoryItem[]> {
+    const results: MemoryItem[] = [];
+    for (const action of actions) {
+      try {
+        const tagNames = action.tagNames || [];
+        const data = TagsUtils.wrapData(action.text, tagNames);
+        switch (action.event) {
+          case "ADD": {
+            const memoryId = await this.createMemory(
+              data,
+              tagNames,
+              {},
+              action.metadata || {}
+            );
+            results.push({
+              id: memoryId,
+              memory: data,
+              metadata: { event: "ADD" },
+            });
+            break;
+          }
+          case "UPDATE": {
+            const memoryId = await this.updateMemory(
+              action.memoryId,
+              data,
+              tagNames,
+              {},
+              action.metadata || {}
+            );
+            results.push({
+              id: memoryId,
+              memory: data,
+              metadata: { event: "UPDATE" },
+            });
+            break;
+          }
+          case "DELETE": {
+            await this.deleteMemory(action.memoryId);
+            results.push({
+              id: action.memoryId,
+              memory: "",
+              metadata: { event: "DELETE" },
+            });
+            break;
+          }
+        }
+      } catch (error) {
+        console.error(`Error apply actions: ${error}`);
+      }
+    }
+    return results;
+  }
+
+  private async createAddToVectorStoreActions(
+    options: AddToVectorStoreOptions
+  ): Promise<MemoryAction[]> {
+    const { messages, tags, filters, customPrompt, metadata } = options;
     const parsedMessages = messages.map((m) => m.content).join("\n");
 
-    const [systemPrompt, userPrompt] = this.customPrompt
-      ? [this.customPrompt, `Input:\n${parsedMessages}`]
-      : getFactRetrievalMessages(parsedMessages);
+    // 设置 system prompt 和 user prompt
+    let systemPrompt = "";
+    let userPrompt = "";
 
+    if (customPrompt || this.customPrompt) {
+      systemPrompt = customPrompt || this.customPrompt || "";
+      userPrompt =
+        "Following is a conversation between the user and the assistant." +
+        "You have to extract the relevant facts and preferences about the user, if any, from the conversation and return them in the JSON format as shown above.";
+      if (tags.length > 0) {
+        userPrompt += `\n\n### Input\n${parsedMessages}\n\n### Tags ${tags.map((tag, index) => `${index + 1}. ${tag.name}: ${tag.description}`).join("\n")}`;
+      } else {
+        userPrompt += `\n\n### Input\n${parsedMessages}`;
+      }
+    } else if (tags.length > 0) {
+      [systemPrompt, userPrompt] = getTextTagRetrievalMessages(
+        parsedMessages,
+        tags
+      );
+    } else {
+      [systemPrompt, userPrompt] = getFactRetrievalMessages(parsedMessages);
+    }
+
+    // 调用 LLM 获取 facts 和 tagNamesList
     const response = await this.llm.generateResponse(
       [
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt },
       ],
-      { type: "json_object" },
+      { type: "json_object" }
     );
-
     const cleanResponse = removeCodeBlocks(response as string);
     let facts: string[] = [];
+    let tagNamesList: string[][] = [];
     try {
-      facts = JSON.parse(cleanResponse).facts || [];
+      const responseJson = JSON.parse(cleanResponse);
+      facts = responseJson.facts || [];
+      tagNamesList = responseJson.tagNamesList || [];
     } catch (e) {
       console.error(
         "Failed to parse facts from LLM response:",
         cleanResponse,
-        e,
+        e
       );
       facts = [];
+      tagNamesList = [];
     }
 
     // Get embeddings for new facts
     const newMessageEmbeddings: Record<string, number[]> = {};
-    const retrievedOldMemory: Array<{ id: string; text: string }> = [];
+    const retrievedOldMemory: Array<{
+      id: string;
+      text: string;
+      tag_names: string[];
+    }> = [];
+    const factsWithTagNames: Array<{
+      text: string;
+      tag_names: string[];
+    }> = [];
 
     // Create embeddings and search for similar memories
-    for (const fact of facts) {
+    for (let i = 0; i < facts.length; i++) {
+      const tagNames: string[] = tagNamesList[i] || [];
+      const fact =
+        Array.isArray(tagNames) && tagNames.length > 0
+          ? ` ${TagsUtils.getDataPrefix(tagNames)} ${facts[i]}`
+          : facts[i];
+      factsWithTagNames.push({ text: fact, tag_names: tagNames });
+      facts[i] = fact;
+
       const embedding = await this.embedder.embed(fact);
       newMessageEmbeddings[fact] = embedding;
 
       const existingMemories = await this.vectorStore.search(
         embedding,
         5,
-        filters,
+        filters
       );
       for (const mem of existingMemories) {
-        retrievedOldMemory.push({ id: mem.id, text: mem.payload.data });
+        retrievedOldMemory.push({
+          id: mem.id,
+          text: mem.payload.data,
+          tag_names: mem.payload.tagNames,
+        });
       }
     }
 
     // Remove duplicates from old memories
     const uniqueOldMemories = retrievedOldMemory.filter(
       (mem, index) =>
-        retrievedOldMemory.findIndex((m) => m.id === mem.id) === index,
+        retrievedOldMemory.findIndex((m) => m.id === mem.id) === index
     );
-
     // Create UUID mapping for handling UUID hallucinations
     const tempUuidMapping: Record<string, string> = {};
     uniqueOldMemories.forEach((item, idx) => {
@@ -299,77 +436,108 @@ export class Memory {
     });
 
     // Get memory update decisions
-    const updatePrompt = getUpdateMemoryMessages(uniqueOldMemories, facts);
+    let updatePrompt = "";
+    if (tags.length > 0) {
+      updatePrompt = getTextTagUpdateMemoryMessages(
+        uniqueOldMemories,
+        tags,
+        factsWithTagNames
+      );
+    } else {
+      updatePrompt = getUpdateMemoryMessages(uniqueOldMemories, facts);
+    }
 
     const updateResponse = await this.llm.generateResponse(
       [{ role: "user", content: updatePrompt }],
-      { type: "json_object" },
+      { type: "json_object" }
     );
 
     const cleanUpdateResponse = removeCodeBlocks(updateResponse as string);
-    let memoryActions: any[] = [];
+    let actions: {
+      id: string;
+      event: "ADD" | "UPDATE" | "DELETE" | "NONE";
+      text: string;
+      tag_names?: string[];
+      old_memory?: string;
+      old_tag_names?: string[];
+    }[] = [];
+
     try {
-      memoryActions = JSON.parse(cleanUpdateResponse).memory || [];
+      actions = JSON.parse(cleanUpdateResponse).memory || [];
     } catch (e) {
       console.error(
         "Failed to parse memory actions from LLM response:",
         cleanUpdateResponse,
-        e,
+        e
       );
-      memoryActions = [];
+      actions = [];
     }
 
-    // Process memory actions
-    const results: MemoryItem[] = [];
-    for (const action of memoryActions) {
-      try {
-        switch (action.event) {
-          case "ADD": {
-            const memoryId = await this.createMemory(
-              action.text,
-              newMessageEmbeddings,
-              metadata,
-            );
-            results.push({
-              id: memoryId,
-              memory: action.text,
-              metadata: { event: action.event },
-            });
-            break;
-          }
-          case "UPDATE": {
-            const realMemoryId = tempUuidMapping[action.id];
-            await this.updateMemory(
-              realMemoryId,
-              action.text,
-              newMessageEmbeddings,
-              metadata,
-            );
-            results.push({
-              id: realMemoryId,
-              memory: action.text,
-              metadata: {
-                event: action.event,
-                previousMemory: action.old_memory,
-              },
-            });
-            break;
-          }
-          case "DELETE": {
-            const realMemoryId = tempUuidMapping[action.id];
-            await this.deleteMemory(realMemoryId);
-            results.push({
-              id: realMemoryId,
-              memory: action.text,
-              metadata: { event: action.event },
-            });
-            break;
-          }
-        }
-      } catch (error) {
-        console.error(`Error processing memory action: ${error}`);
+    const memoryActions: MemoryAction[] = [];
+    actions.forEach((action) => {
+      if (action.event === "NONE") {
+        return;
       }
+      const tagNames = action.tag_names || [];
+      const oldTagNames = action.old_tag_names || [];
+      memoryActions.push({
+        actionId: uuidv4(),
+        memoryId: tempUuidMapping[action.id],
+        event: action.event,
+        text: TagsUtils.clarifyData(action.text, tagNames),
+        tagNames,
+        oldText: TagsUtils.clarifyData(action.old_memory || "", oldTagNames),
+        oldTagNames,
+        metadata,
+      });
+    });
+
+    return memoryActions;
+  }
+
+  private async addToVectorStoreDirect(options: {
+    messages: Message[];
+    tags: Tag[];
+    metadata: Record<string, any>;
+  }): Promise<MemoryItem[]> {
+    const { messages, metadata } = options;
+    const returnedMemories: MemoryItem[] = [];
+    for (const message of messages) {
+      if (message.content === "system") {
+        continue;
+      }
+      const memoryId = await this.createMemory(
+        message.content as string,
+        options.tags.map((tag) => tag.name),
+        {},
+        metadata
+      );
+      returnedMemories.push({
+        id: memoryId,
+        memory: message.content as string,
+        metadata: { event: "ADD" },
+      });
     }
+    return returnedMemories;
+  }
+
+  private async addToVectorStore(
+    messages: Message[],
+    tags: Tag[],
+    customPrompt: string,
+    metadata: Record<string, any>,
+    filters: SearchFilters
+  ): Promise<MemoryItem[]> {
+    const memoryActions = await this.createAddToVectorStoreActions({
+      messages,
+      tags,
+      filters,
+      customPrompt,
+      metadata,
+    });
+
+    // Process memory actions
+    const results = await this.applyActions(memoryActions);
 
     return results;
   }
@@ -414,7 +582,7 @@ export class Memory {
 
   async search(
     query: string,
-    config: SearchMemoryOptions,
+    config: SearchMemoryOptions
   ): Promise<SearchResult> {
     await this._captureEvent("search", {
       query_length: query.length,
@@ -429,7 +597,7 @@ export class Memory {
 
     if (!filters.userId && !filters.agentId && !filters.runId) {
       throw new Error(
-        "One of the filters: userId, agentId or runId is required!",
+        "One of the filters: userId, agentId or runId is required!"
       );
     }
 
@@ -438,7 +606,7 @@ export class Memory {
     const memories = await this.vectorStore.search(
       queryEmbedding,
       limit,
-      filters,
+      filters
     );
 
     // Search graph store if available
@@ -481,10 +649,16 @@ export class Memory {
     };
   }
 
-  async update(memoryId: string, data: string): Promise<{ message: string }> {
+  async update(
+    memoryId: string,
+    data: string,
+    tagNames?: string[]
+  ): Promise<{ message: string }> {
     await this._captureEvent("update", { memory_id: memoryId });
     const embedding = await this.embedder.embed(data);
-    await this.updateMemory(memoryId, data, { [data]: embedding });
+    await this.updateMemory(memoryId, data, tagNames || [], {
+      [data]: embedding,
+    });
     return { message: "Memory updated successfully!" };
   }
 
@@ -495,7 +669,7 @@ export class Memory {
   }
 
   async deleteAll(
-    config: DeleteAllMemoryOptions,
+    config: DeleteAllMemoryOptions
   ): Promise<{ message: string }> {
     await this._captureEvent("delete_all", {
       has_user_id: !!config.userId,
@@ -511,7 +685,7 @@ export class Memory {
 
     if (!Object.keys(filters).length) {
       throw new Error(
-        "At least one filter is required to delete all memories. If you want to delete all memories, use the `reset()` method.",
+        "At least one filter is required to delete all memories. If you want to delete all memories, use the `reset()` method."
       );
     }
 
@@ -538,13 +712,13 @@ export class Memory {
       } catch (e) {
         console.error(
           `Failed to delete collection for provider '${this.config.vectorStore.provider}':`,
-          e,
+          e
         );
         // Decide if you want to re-throw or just log
       }
     } else {
       console.warn(
-        "Memory.reset(): Skipping vector store collection deletion as 'langchain' provider is used. Underlying Langchain vector store data is not cleared by this operation.",
+        "Memory.reset(): Skipping vector store collection deletion as 'langchain' provider is used. Underlying Langchain vector store data is not cleared by this operation."
       );
     }
 
@@ -555,16 +729,16 @@ export class Memory {
     // Re-initialize factories/clients based on the original config
     this.embedder = EmbedderFactory.create(
       this.config.embedder.provider,
-      this.config.embedder.config,
+      this.config.embedder.config
     );
     // Re-create vector store instance - crucial for Langchain to reset wrapper state if needed
     this.vectorStore = VectorStoreFactory.create(
       this.config.vectorStore.provider,
-      this.config.vectorStore.config, // This will pass the original client instance back
+      this.config.vectorStore.config // This will pass the original client instance back
     );
     this.llm = LLMFactory.create(
       this.config.llm.provider,
-      this.config.llm.config,
+      this.config.llm.config
     );
     // Re-init DB if needed (though db.reset() likely handles its state)
     // Re-init Graph if needed
@@ -617,8 +791,9 @@ export class Memory {
 
   private async createMemory(
     data: string,
+    tagNames: string[],
     existingEmbeddings: Record<string, number[]>,
-    metadata: Record<string, any>,
+    metadata: Record<string, any>
   ): Promise<string> {
     const memoryId = uuidv4();
     const embedding =
@@ -626,6 +801,7 @@ export class Memory {
 
     const memoryMetadata = {
       ...metadata,
+      tagNames,
       data,
       hash: createHash("md5").update(data).digest("hex"),
       createdAt: new Date().toISOString(),
@@ -637,7 +813,7 @@ export class Memory {
       null,
       data,
       "ADD",
-      memoryMetadata.createdAt,
+      memoryMetadata.createdAt
     );
 
     return memoryId;
@@ -646,8 +822,9 @@ export class Memory {
   private async updateMemory(
     memoryId: string,
     data: string,
+    tagNames: string[],
     existingEmbeddings: Record<string, number[]>,
-    metadata: Record<string, any> = {},
+    metadata: Record<string, any> = {}
   ): Promise<string> {
     const existingMemory = await this.vectorStore.get(memoryId);
     if (!existingMemory) {
@@ -661,6 +838,7 @@ export class Memory {
     const newMetadata = {
       ...metadata,
       data,
+      tagNames,
       hash: createHash("md5").update(data).digest("hex"),
       createdAt: existingMemory.payload.createdAt,
       updatedAt: new Date().toISOString(),
@@ -682,7 +860,7 @@ export class Memory {
       data,
       "UPDATE",
       newMetadata.createdAt,
-      newMetadata.updatedAt,
+      newMetadata.updatedAt
     );
 
     return memoryId;
@@ -703,7 +881,7 @@ export class Memory {
       "DELETE",
       undefined,
       undefined,
-      1,
+      1
     );
 
     return memoryId;
