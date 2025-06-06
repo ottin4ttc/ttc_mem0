@@ -346,9 +346,9 @@ export class Memory {
       systemPrompt = customPrompt || this.customPrompt || "";
       userPrompt =
         "Following is a conversation between the user and the assistant." +
-        "You have to extract the relevant facts and preferences about the user, if any, from the conversation and return them in the JSON format as shown above.";
+        "You have to extract the relevant facts and tags about the user, if any, from the conversation and return them in the JSON format as shown above.";
       if (tags.length > 0) {
-        userPrompt += `\n\n### Input\n${parsedMessages}\n\n### Tags ${tags.map((tag, index) => `${index + 1}. ${tag.name}: ${tag.description}`).join("\n")}`;
+        userPrompt += `\n\n### Input\n${parsedMessages}\n\n### Tags\n${tags.map((tag, index) => `${index + 1}. ${tag.name}: ${tag.description}`).join("\n")}`;
       } else {
         userPrompt += `\n\n### Input\n${parsedMessages}`;
       }
@@ -442,7 +442,6 @@ export class Memory {
     if (tags.length > 0) {
       updatePrompt = getTextTagUpdateMemoryMessages(
         uniqueOldMemories,
-        tags,
         factsWithTagNames,
       );
     } else {
