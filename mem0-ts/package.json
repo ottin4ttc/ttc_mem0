@@ -1,6 +1,6 @@
 {
   "name": "ttc_mem0ai",
-  "version": "2.1.28",
+  "version": "2.2.1",
   "description": "The Memory Layer For Your AI Apps",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
@@ -104,14 +104,12 @@
     "@supabase/supabase-js": "^2.49.1",
     "@types/jest": "29.5.14",
     "@types/pg": "8.11.0",
-    "@types/sqlite3": "3.1.11",
     "groq-sdk": "0.3.0",
     "@langchain/core": "^0.3.44",
     "neo4j-driver": "^5.28.1",
     "ollama": "^0.5.14",
     "pg": "8.11.3",
-    "redis": "^4.6.13",
-    "sqlite3": "5.1.7"
+    "redis": "^4.6.13"
   },
   "engines": {
     "node": ">=18"
