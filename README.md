@@ -55,6 +55,7 @@
 - mem0-ts 支持将“memory 写入”分为独立的两个步骤：createActions、applyActions
 - mem0-ts 支持 find 方法
 - 移除 sqlite3
+- embedder 支持配置 dimensions
 
 ##  🔥 Research Highlights
 - **+26% Accuracy** over OpenAI Memory on the LOCOMO benchmark

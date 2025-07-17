@@ -36,9 +36,9 @@ export interface EmbeddingConfig {
   apiKey?: string;
   model?: string | any;
   url?: string;
+  dimension?: number;
   modelProperties?: Record<string, any>;
 }
-
 export interface VectorStoreConfig {
   collectionName?: string;
   dimension?: number;
@@ -138,6 +138,7 @@ export const MemoryConfigSchema = z.object({
       apiKey: z.string().optional(),
       model: z.union([z.string(), z.any()]).optional(),
       url: z.string().optional(),
+      dimension: z.number().optional(),
     }),
   }),
   vectorStore: z.object({

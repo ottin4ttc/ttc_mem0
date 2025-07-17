@@ -8,6 +8,7 @@ export const DEFAULT_MEMORY_CONFIG: MemoryConfig = {
     config: {
       apiKey: process.env.OPENAI_API_KEY || "",
       model: "text-embedding-3-small",
+      dimension: 1536,
     },
   },
   vectorStore: {
