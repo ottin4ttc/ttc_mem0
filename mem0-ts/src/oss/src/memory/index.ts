@@ -236,7 +236,7 @@ export class Memory {
     messages: string | Message[],
     config: AddMemoryOptions,
   ): Promise<MemoryAction[]> {
-    await this._captureEvent("add", {
+    await this._captureEvent("create_actions", {
       message_count: Array.isArray(messages) ? messages.length : 1,
       has_metadata: !!config.metadata,
       has_filters: !!config.filters,

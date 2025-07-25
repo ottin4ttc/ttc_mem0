@@ -31,6 +31,7 @@ export class ConfigManager {
               userConf?.modelProperties !== undefined
                 ? userConf.modelProperties
                 : defaultConf.modelProperties,
+            dimension: userConf?.dimension || defaultConf.dimension,
           };
         })(),
       },
