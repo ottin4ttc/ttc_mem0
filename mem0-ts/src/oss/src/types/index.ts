@@ -9,6 +9,7 @@ export interface MultiModalMessages {
 }
 
 export interface MemoryAction {
+  agentId?: string; // agent_id
   memoryId: string; // memory_id
   actionId: string; // action_id
   event: "ADD" | "UPDATE" | "DELETE"; // add, update, delete

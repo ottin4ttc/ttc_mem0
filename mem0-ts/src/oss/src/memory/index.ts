@@ -285,18 +285,24 @@ export class Memory {
       try {
         const tagNames = action.tagNames || [];
         const data = TagsUtils.wrapData(action.text, tagNames);
+        const metadata = action.metadata || {};
+
+        if (action.agentId) {
+          metadata.agentId = action.agentId;
+        }
+
         switch (action.event) {
           case "ADD": {
             const memoryId = await this.createMemory(
               data,
               tagNames,
               {},
-              action.metadata || {},
+              metadata,
             );
             results.push({
               id: memoryId,
               memory: data,
-              metadata: { event: "ADD" },
+              metadata: { event: "ADD", ...metadata },
             });
             break;
           }
@@ -306,12 +312,12 @@ export class Memory {
               data,
               tagNames,
               {},
-              action.metadata || {},
+              metadata,
             );
             results.push({
               id: memoryId,
               memory: data,
-              metadata: { event: "UPDATE" },
+              metadata: { event: "UPDATE", ...metadata },
             });
             break;
           }
