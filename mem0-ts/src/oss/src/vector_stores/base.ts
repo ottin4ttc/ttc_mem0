@@ -12,6 +12,7 @@ export interface VectorStore {
     filters?: SearchFilters,
   ): Promise<VectorStoreResult[]>;
   get(vectorId: string): Promise<VectorStoreResult | null>;
+  getList?(vectorIds: string[]): Promise<VectorStoreResult[]>;
   update(
     vectorId: string,
     vector: number[],

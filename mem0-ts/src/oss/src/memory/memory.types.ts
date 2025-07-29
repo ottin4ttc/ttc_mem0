@@ -26,6 +26,7 @@ export interface SearchMemoryOptions extends Entity {
 
 export interface GetAllMemoryOptions extends Entity {
   limit?: number;
+  filters?: SearchFilters;
 }
 
 export interface DeleteAllMemoryOptions extends Entity {}

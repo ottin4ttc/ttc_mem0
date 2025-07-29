@@ -134,6 +134,19 @@ export class Qdrant implements VectorStore {
     }));
   }
 
+  async getList(vectorIds: string[]): Promise<VectorStoreResult[]> {
+    const results = await this.client.retrieve(this.collectionName, {
+      ids: vectorIds,
+      with_payload: true,
+    });
+    if (!results.length) return [];
+
+    return results.map((hit) => ({
+      id: String(hit.id),
+      payload: (hit.payload as Record<string, any>) || {},
+    }));
+  }
+
   async get(vectorId: string): Promise<VectorStoreResult | null> {
     const results = await this.client.retrieve(this.collectionName, {
       ids: [vectorId],

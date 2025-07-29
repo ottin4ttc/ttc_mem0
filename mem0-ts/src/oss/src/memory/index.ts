@@ -581,6 +581,13 @@ export class Memory {
     return { ...memoryItem, ...filters };
   }
 
+  async getList(memoryIds: string[]): Promise<MemoryItem[]> {
+    const memories = await this.vectorStore.getList?.(memoryIds);
+    if (!memories) return [];
+
+    return this.vectorResult2SearchResult(memories).results;
+  }
+
   async search(
     query: string,
     config: SearchMemoryOptions,
@@ -760,9 +767,8 @@ export class Memory {
       has_agent_id: !!config.agentId,
       has_run_id: !!config.runId,
     });
-    const { userId, agentId, runId, limit = 100 } = config;
+    const { userId, agentId, filters = {}, runId, limit = 100 } = config;
 
-    const filters: SearchFilters = {};
     if (userId) filters.userId = userId;
     if (agentId) filters.agentId = agentId;
     if (runId) filters.runId = runId;
