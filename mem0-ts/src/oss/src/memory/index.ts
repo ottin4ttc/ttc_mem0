@@ -661,12 +661,19 @@ export class Memory {
     memoryId: string,
     data: string,
     tagNames?: string[],
+    metadata?: Record<string, any>,
   ): Promise<{ message: string }> {
     await this._captureEvent("update", { memory_id: memoryId });
     const embedding = await this.embedder.embed(data);
-    await this.updateMemory(memoryId, data, tagNames || [], {
-      [data]: embedding,
-    });
+    await this.updateMemory(
+      memoryId,
+      data,
+      tagNames || [],
+      {
+        [data]: embedding,
+      },
+      metadata,
+    );
     return { message: "Memory updated successfully!" };
   }
 
